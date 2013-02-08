@@ -93,15 +93,16 @@
      * the CanonicalizedResource is "".
      */
     var makeCanonicalizedResource = function(req) {
-        var str = null;
+        var str = '/';
 
-        if (!req.bucket) {
-            str = '/';
-        } else {
-            str = '/' + req.bucket;
+        if (!!req.bucket) {
+            str += req.bucket;
         }
 
-        str += '/' + req.path;
+        if (!!req.path) {
+            str += '/' + req.path;
+        }
+
         str = str.replace(/ /g, '+');
         console.log("canonicalized resource:", str);
         console.log("Encoded:", encodeURI(str));
@@ -122,14 +123,26 @@
             req.contentType = '';
         }
 
-        var url = 'https://s3.amazonaws.com/' + req.bucket + '/' + req.path;
+        var url = generatePreSignedURL(req);
+        'https://s3.amazonaws.com/';
+        if (!!req.bucket) {
+            url += req.bucket;
+        }
+
+        if (!!req.path) {
+            url += '/' + req.path;
+        }
+
         url = url.replace(/ /g, '+');
         var headers = {
             'x-amz-date': req.date,
-            'Authorization': makeAWSAuthorizationHeader(client, req),
-            'Content-MD5': contentMD5(req),
-            'Content-Type': req.contentType
+            'Authorization': makeAWSAuthorizationHeader(client, req)
         };
+
+        if (req.type === 'POST' || req.method === 'PUT') {
+            headers['Content-MD5'] = contentMD5(req);
+            headers['Content-Type'] = req.contentType;
+        }
 
         var xhr = new XMLHttpRequest();
         xhr.open(req.method, url, true);
@@ -158,6 +171,25 @@
         };
 
         xhr.send(req.body);
+    };
+
+    S3Client.prototype.listBuckets = function(callback) {
+        var req = {
+            method: 'GET'
+        };
+
+        doRequest(this, req, function(err, rsp) {
+            if (err !== null) {
+                callback(err, null);
+                return;
+            }
+
+            var xmlDoc = (new DOMParser).parseFromString(rsp.body, 'application/xml');
+
+            console.log(xmlDoc);
+            var list = [];
+            callback(null, list);
+        });
     };
 
     S3Client.prototype.getBucket = function(bucket, callback) {

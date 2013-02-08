@@ -1,12 +1,34 @@
 var testBucket = 'test.autumncloud.net';
 var testFile = 'xtest.txt';
 var testData = '123456';
-var timeout = 5000;
-var awsKey = '';
-var awsSecret = '';
+var timeout = 3000;
+var awsKey = 'AKIAIRMHBCIBRGJJBDOQ';
+var awsSecret = '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';
+
+describe('test setup', function() {
+    it('should have key defined', function() {
+        expect(awsKey).toBeTruthy();
+    });
+
+    it('should have secret defined', function() {
+        expect(awsSecret).toBeTruthy();
+    });
+});
 
 describe('S3Client', function() {
     var s3 = new S3Client(awsKey, awsSecret);
+
+    it('should list buckets', function() {
+        var done = false;
+        runs(function() {
+            s3.listBuckets(function(err, list) {
+                expect(err).toBeNull();
+            });
+        });
+        waitsFor(function() {
+            return done;
+        }, 'Should call callback', timeout);
+    });
 
     it('should GET bucket', function() {
         var done = false;
