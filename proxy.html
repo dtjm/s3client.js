@@ -1,0 +1,40 @@
+<html><head><script>
+// This proxy receives GET requests in the form of:
+// 
+//     [request ID]\n
+//     [URL]
+//     
+// Responses are posted back to the caller as a JSON array:
+// 
+// 	   [
+// 	   		[request ID],
+// 	   		[HTTP Status code],
+// 	   		[HTTP Headers],
+// 	   		[HTTP Body]
+// 	   ]
+window.onmessage = function(msg) {
+	var parts = msg.data.split('\n');
+	var reqId = parts[0];
+	var url = parts[1];
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.onreadystatechange = function(e) {
+        if (xhr.readyState === 4) {
+            var response = '[ ' + reqId + ', ' +
+            	xhr.status + ',' +
+            	'"' + xhr.getAllResponseHeaders().replace(/\r?\n/g, '\\n') + '",' +
+            	'"' + xhr.responseText.replace(/"/g, '\\"').replace(/\n/g, '\\n') + '" ]';
+            msg.source.postMessage(response, '*');
+        }
+    };
+
+    xhr.onerror = function(e) {
+        var response = '[ ' + reqId +
+        	', 500, "", "XMLHttpRequest error: ' + e.toString() + '" ]';
+        msg.source.postMessage(response, '*');
+    }
+
+    xhr.send();
+}
+</script></head><body></body></html>

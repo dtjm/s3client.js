@@ -49,9 +49,31 @@
         }
     }
 
+    var generatePreSignedURL = function(client, req) {
+        req.expires = Math.floor((new Date).getTime()/1000) + 1800;
+        var url = 'https://s3.amazonaws.com/';
+        if (!!req.bucket) {
+            url += req.bucket;
+        }
+
+        if (!!req.path) {
+            url += '/' + req.path;
+        }
+
+        url = url.replace(/ /g, '+');
+
+        var sig = makeAWSSignature(client, req);
+        url += '?Signature=' + encodeURIComponent(sig) +
+            '&Expires=' + req.expires +
+            '&AWSAccessKeyId=' + client.access_key;
+
+        console.log('pre-signed url', url);
+        return url;
+    };
+
     var makeDate = function(req) {
-        return '';
-    }
+        return '' + req.expires;
+    };
 
     var makeAWSAuthorizationHeader = function(client, request) {
         // AWS [key]:[signature]
@@ -99,8 +121,8 @@
             str += req.bucket;
         }
 
-        if (!!req.path) {
-            str += '/' + req.path;
+        if (!!req.key) {
+            str += '/' + req.key;
         }
 
         str = str.replace(/ /g, '+');
@@ -111,34 +133,22 @@
     };
 
     var makeCanonicalizedAmzHeaders = function(req) {
-        return 'x-amz-date:'+req.date+'\n';
+        return '';
+        // return 'x-amz-date:'+req.date+'\n';
     };
 
     var doRequest = function(client, req, callback) {
         req.date = (new Date).toUTCString();
-        if (!req.path) {
-            req.path = '';
+        if (!req.key) {
+            req.key = '';
         }
         if (!req.contentType) {
             req.contentType = '';
         }
 
-        var url = generatePreSignedURL(req);
-        'https://s3.amazonaws.com/';
-        if (!!req.bucket) {
-            url += req.bucket;
-        }
+        var url = generatePreSignedURL(client, req);
 
-        if (!!req.path) {
-            url += '/' + req.path;
-        }
-
-        url = url.replace(/ /g, '+');
-        var headers = {
-            'x-amz-date': req.date,
-            'Authorization': makeAWSAuthorizationHeader(client, req)
-        };
-
+        var headers = {};
         if (req.type === 'POST' || req.method === 'PUT') {
             headers['Content-MD5'] = contentMD5(req);
             headers['Content-Type'] = req.contentType;
@@ -170,26 +180,98 @@
             }
         };
 
+        xhr.onerror = function(e) {
+            callback(e, null);
+        }
+
         xhr.send(req.body);
     };
 
+
+    var iframe = null;
+    var iframeIsLoaded = false;
+    var reqId = 0;
     S3Client.prototype.listBuckets = function(callback) {
         var req = {
             method: 'GET'
         };
 
-        doRequest(this, req, function(err, rsp) {
-            if (err !== null) {
-                callback(err, null);
+        var myReqId = reqId++;
+
+        var url = generatePreSignedURL(this, req);
+
+        if (iframe === null) {
+            iframe = document.createElement("iframe");
+            iframe.id = 'dtjm.github.com.s3client.js.proxy'
+            iframe.style.display = 'none';
+            iframe.src = 'https://s3.amazonaws.com/dtjm.github.com/proxy.html';
+            document.body.appendChild(iframe);
+        }
+        
+        var onIframeLoad = function(){
+            var req = myReqId + '\n' + url;
+            iframe.contentWindow.postMessage(req, 'https://s3.amazonaws.com');
+            iframe.removeEventListener('load', onIframeLoad);
+            iframeIsLoaded = true;
+        };
+
+        if (!iframeIsLoaded) {
+            iframe.addEventListener("load", onIframeLoad);
+        } else {
+            onIframeLoad();
+        }
+
+        var onMessage = function(msg) {
+            var rsp = JSON.parse(msg.data);
+            var rspId = rsp[0];
+
+            if (rspId !== myReqId) {
                 return;
             }
 
-            var xmlDoc = (new DOMParser).parseFromString(rsp.body, 'application/xml');
+            window.removeEventListener('message', onMessage);
 
+            var statusCode = rsp[1];
+            var headerText = rsp[2];
+            var body = rsp[3];
+
+            var headers = {};
+            var lines = headerText.split('\n');
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i] === '') continue;
+                var parts = lines[i].split(': ');
+                headers[parts[0].toLowerCase()] = parts[1];
+            }
+
+            if (statusCode !== 200) {
+                callback({
+                    code: statusCode,
+                    headers: headers,
+                    body: rsp[2]
+                })
+            }
+            
+            var xmlDoc = (new DOMParser).parseFromString(body, 'application/xml');
             console.log(xmlDoc);
-            var list = [];
-            callback(null, list);
-        });
+            var rsp = {
+                Owner: {
+                    ID: xmlDoc.querySelector('Owner ID').textContent,
+                    DisplayName: xmlDoc.querySelector('Owner DisplayName').textContent,
+                },
+                Buckets: []
+            };
+
+            var buckets = xmlDoc.querySelectorAll('Buckets Bucket');
+            for(var i = 0; i < buckets.length; i++) {
+                rsp.Buckets.push({
+                    Name: buckets[i].querySelector('Name').textContent,
+                    CreationDate: buckets[i].querySelector('CreationDate').textContent
+                });
+            }
+            callback(null, rsp);
+        };
+
+        window.addEventListener('message', onMessage);
     };
 
     S3Client.prototype.getBucket = function(bucket, callback) {

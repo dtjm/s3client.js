@@ -1,9 +1,14 @@
 var testBucket = 'test.autumncloud.net';
 var testFile = 'xtest.txt';
 var testData = '123456';
-var timeout = 3000;
-var awsKey = 'AKIAIRMHBCIBRGJJBDOQ';
-var awsSecret = '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';
+var timeout = 5000;
+
+var creds = window.location.hash.substr(1).split(':');
+console.log(creds);
+var awsKey = creds[0];
+var awsSecret = creds[1];
+console.log('key', awsKey);
+console.log('secret', awsSecret);
 
 describe('test setup', function() {
     it('should have key defined', function() {
@@ -23,6 +28,8 @@ describe('S3Client', function() {
         runs(function() {
             s3.listBuckets(function(err, list) {
                 expect(err).toBeNull();
+                done = true;
+                console.log(list);
             });
         });
         waitsFor(function() {
