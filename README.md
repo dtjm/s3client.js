@@ -11,6 +11,22 @@ In your `<head>`:
 In your `<script>`:
 
     var s3 = new S3Client('AWS ACCESS KEY', 'AWS SECRET');
+
+    s3.listBuckets(function(err, list) {
+        // list = {
+        //   Owner: {
+        //     Id: "xxx",
+        //     DisplayName: "X Y"
+        //   },
+        //   Buckets: [
+        //     {
+        //        Name: "mybucket",
+        //        CreationDate: "2012-11-13T15:33:46.000Z"
+        //     }
+        //   ]
+        // }
+    });
+
     s3.getBucket('BUCKET NAME', function(err, bucket) {
         // bucket => {
         //   Name: 'BUCKET NAME'
@@ -37,6 +53,8 @@ In your `<script>`:
 API
 ---
 ### constructor - S3Client(key, secret)
+
+### listBuckets ( callback(err, results) )
 
 ### getBucket (bucket, callback(err, bucket) )
 

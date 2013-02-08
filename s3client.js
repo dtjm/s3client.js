@@ -50,14 +50,14 @@
     }
 
     var generatePreSignedURL = function(client, req) {
-        req.expires = Math.floor((new Date).getTime()/1000) + 1800;
+        req.expires = Math.floor((new Date).getTime()/1000) + 30;
         var url = 'https://s3.amazonaws.com/';
         if (!!req.bucket) {
             url += req.bucket;
         }
 
-        if (!!req.path) {
-            url += '/' + req.path;
+        if (!!req.key) {
+            url += '/' + req.key;
         }
 
         url = url.replace(/ /g, '+');
@@ -319,10 +319,10 @@
         });
     };
 
-    S3Client.prototype.getObject = function(bucket, path, callback) {
+    S3Client.prototype.getObject = function(bucket, key, callback) {
         var req = {
             method: 'GET',
-            path: path,
+            key: key,
             bucket: bucket
         };
 
@@ -330,11 +330,11 @@
     };
 
     S3Client.prototype.putObject =
-    function(bucket, path, body, callback) {
+    function(bucket, key, body, callback) {
         var req = {
             method: 'PUT',
             bucket: bucket,
-            path: path,
+            key: key,
             body: body,
             contentType: 'text/plain'
         };
