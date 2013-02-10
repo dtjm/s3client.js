@@ -26,9 +26,13 @@
     (function(){var p=CryptoJS,m=p.enc.Utf8;p.algo.HMAC=p.lib.Base.extend({init:function(c,d){c=this._hasher=new c.init;"string"==typeof d&&(d=m.parse(d));var l=c.blockSize,r=4*l;d.sigBytes>r&&(d=c.finalize(d));d.clamp();for(var j=this._oKey=d.clone(),q=this._iKey=d.clone(),p=j.words,a=q.words,s=0;s<l;s++)p[s]^=1549556828,a[s]^=909522486;j.sigBytes=q.sigBytes=r;this.reset()},reset:function(){var c=this._hasher;c.reset();c.update(this._iKey)},update:function(c){this._hasher.update(c);return this},finalize:function(c){var d=
     this._hasher;c=d.finalize(c);d.reset();return d.finalize(this._oKey.clone().concat(c))}})})();
 
+    // Keep keys here, outside of the S3Client object so other JS can't steal them
+    var clientID = 0;
+    var keys = {};
+
     var S3Client = function(awsKey, awsSecret) {
-        this.access_key = awsKey;
-        this.secret = awsSecret;
+        this.clientID = clientID++;
+        keys[this.clientID] = {key: awsKey, secret: awsSecret};
     };
 
     var contentMD5 = function(req) {
@@ -65,7 +69,7 @@
         var sig = makeAWSSignature(client, req);
         url += '?Signature=' + encodeURIComponent(sig) +
             '&Expires=' + req.expires +
-            '&AWSAccessKeyId=' + client.access_key;
+            '&AWSAccessKeyId=' + keys[client.clientID].key;
 
         console.log('pre-signed url', url);
         return url;
@@ -77,7 +81,7 @@
 
     var makeAWSAuthorizationHeader = function(client, request) {
         // AWS [key]:[signature]
-        return 'AWS ' + client.access_key + ':' + makeAWSSignature(client, request);
+        return 'AWS ' + keys[client.clientID].key + ':' + makeAWSSignature(client, request);
     };
 
     var makeAWSSignature = function(client, request) {
@@ -86,7 +90,8 @@
         console.log("stringToSign", stringToSign);
 
         return CryptoJS.enc.Base64.stringify(
-            CryptoJS.HmacSHA1(stringToSign, client.secret));
+            CryptoJS.HmacSHA1(stringToSign, keys[client.clientID].secret)
+            );
     };
 
     var makeAWSStringToSign = function(request) {
@@ -252,7 +257,7 @@
             }
             
             var xmlDoc = (new DOMParser).parseFromString(body, 'application/xml');
-            console.log(xmlDoc);
+            // console.log(xmlDoc);
             var rsp = {
                 Owner: {
                     ID: xmlDoc.querySelector('Owner ID').textContent,

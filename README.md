@@ -82,6 +82,15 @@ Make sure your bucket supports at least this CORS configuration:
         </CORSRule>
     </CORSConfiguration>
 
+Design
+------
+For the `GET /` (aka ListAllMyBuckets) operation, s3client.js uses the "iframe
+postMessage proxy" technique to work around S3's lack of CORS support for that call.
+
+All other operations use Pre-Signed URLs to perform authorization.
+For GET requests, this has the advantage of avoiding the pre-flight OPTIONS request
+from the browser.
+
 Testing
 -------
 Edit the `test/spec/s3client.js` and set the `awsKey` and `awsSecret` values

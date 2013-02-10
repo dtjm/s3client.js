@@ -1,0 +1,217 @@
+<html>
+<head>
+	<title>s3client.js Examples - S3 Text Editor</title>
+	<script src="../../s3client.js"></script>
+	<script src="jquery-1.9.1.min.js"></script>
+	<script src="underscore-min.js"></script>
+	<!--script src="keymaster.js"></script-->
+
+	<style>
+	body, table {
+		font-family: "Helvetica Neue", "Helvetica", Arial, sans-serif;
+		font-size: 12px;
+	}
+	#sidebar {
+		left: 0;
+		top: 0;
+		background-color: #ddd;
+		bottom: 0;
+		border-right: 2px solid #888;
+		position: absolute;
+		width: 298px;
+	}
+	#login, #logout {
+		padding: 10px;
+	}
+	#logout {
+		display: none;
+	}
+
+	input[type=submit] {
+		width: 100%;
+	}
+
+	#editor {
+		left: 300px;
+		right: 0;
+		top: 0;
+		bottom: 0;
+	}
+	#file_list {
+		padding: 10px;
+	}
+	#file_list li {
+		list-style: none;
+		padding: 3px 0;
+	}
+
+	#file_list .name:hover, #file_list .object:hover {
+		cursor: pointer;
+		color: orange;
+	}
+	</style>
+</head>
+<body>
+	<div id="sidebar">
+		<form id="login">
+			<table>
+				<tr>
+					<td>
+						<label for="key">AWS Key</label></td>
+					<td>
+						<input id="key" placeholder="key" value=""/></td>
+				</tr>
+				<tr>
+					<td>
+						<label for="secret">AWS Secret</label></td>
+					<td>
+						<input id="secret" placeholder="secret" value=""/></td>
+				</tr>
+				<tr>
+					<td colspan="2"><input type="submit" value="Log in" /></td>
+				</tr>
+			</table>
+		</form>
+		<form id="logout">
+			<input type="submit" value="Log out" />
+		</form>
+		<ul id="file_list"></ul>		
+	</div>
+
+	<div id="editor">This is an example of using the S3Client.js library.
+
+Your AWS credentials are stored in <strong>LocalStorage</strong>
+
+CORS Configuration
+------------------
+Make sure your bucket supports at least this CORS configuration:
+
+    &lt;?xml version="1.0" encoding="UTF-8"?&gt;
+    &lt;CORSConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"&gt;
+        &lt;CORSRule&gt;
+            &lt;AllowedOrigin&gt;http://*&lt;/AllowedOrigin&gt;
+            &lt;AllowedMethod&gt;GET&lt;/AllowedMethod&gt;
+            &lt;AllowedMethod&gt;PUT&lt;/AllowedMethod&gt;
+            &lt;MaxAgeSeconds&gt;3000&lt;/MaxAgeSeconds&gt;
+            &lt;AllowedHeader&gt;Authorization&lt;/AllowedHeader&gt;
+            &lt;AllowedHeader&gt;x-amz-date&lt;/AllowedHeader&gt;
+            &lt;AllowedHeader&gt;Accept&lt;/AllowedHeader&gt;
+            &lt;AllowedHeader&gt;Origin&lt;/AllowedHeader&gt;
+            &lt;AllowedHeader&gt;Content-MD5&lt;/AllowedHeader&gt;
+            &lt;AllowedHeader&gt;Content-Type&lt;/AllowedHeader&gt;
+        &lt;/CORSRule&gt;
+    &lt;/CORSConfiguration>
+</div>
+	<script src="src/ace.js" type="text/javascript" charset="utf-8"></script>
+	<script>
+	var EditSession = require('ace/edit_session').EditSession; 
+
+    var editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+
+	</script>
+	<script>
+		var s3;
+		var editSessions = {};
+		var getEditSession = function(bucket, key, callback) {
+			var lookup = bucket + key;
+			if (lookup in editSessions) {
+				callback(editSessions[lookup]);
+				return;
+			}
+
+			s3.getObject(bucket, key, function(err, file) {
+				var session = new EditSession(file.body);
+				session.awsbucket = bucket;
+				session.awskey = key;
+				editSessions[lookup] = session;
+				callback(session);
+			});
+		};
+
+		var onClickBucket = function(e) {
+			var bucketName = $(e.target).text();
+			s3.getBucket(bucketName, function(err, bucket) {
+				if (err !== null) {
+					console.error(err);
+					return;
+				}
+
+				var $ul = $("<ul class='contents'></ul>").appendTo($(e.target).parent());
+				for(var i = 0; i < bucket.Contents.length; i++) {
+					var $li = $("<li class='object'>" + bucket.Contents[i].Key + '</li>');
+					$ul.append($li);
+					$li.click(onClickObject);
+				}
+			})
+		};
+
+		var onClickObject = function(e) {
+			// console.log("onClickObject");
+			var bucket = $(e.target).parents("li").find(".name").text();
+			var key = e.target.textContent;
+
+			getEditSession(bucket, key, function(session){
+				editor.setSession(session);
+			});
+
+			return false;
+		};
+
+		window.addEventListener('submit', function(e){
+			var key = e.srcElement.querySelector('#key').value;
+			var secret = e.srcElement.querySelector('#secret').value;
+			localStorage.awskey = key;
+			localStorage.awssecret = secret;
+			s3 = new S3Client(key, secret);
+
+			s3.listBuckets(function(err, list){
+				for(var i = 0; i < list.Buckets.length; i++) {
+					var $li = $("<li class='bucket'><span class='name'>" + list.Buckets[i].Name + '</span></li>');
+					$(".name", $li).click(onClickBucket);
+					$li.appendTo("#file_list");
+				}
+
+				$("#login").hide();
+				$("#logout").show();
+			})
+			e.preventDefault();
+		})
+
+		$(function(){
+			$("#key").val(localStorage.awskey);
+			$("#secret").val(localStorage.awssecret);
+
+			$("#logout").submit(function(e){
+				localStorage.removeItem('awskey');
+				localStorage.removeItem('awssecret');
+			})
+		})
+
+		editor.commands.addCommand({
+			name: 'saveFile',
+			bindKey: {
+				win: 'Ctrl-S',
+				mac: 'Command-S',
+				sender: 'editor|cli'
+			},
+			exec: function(env, args, request) {
+				var session = editor.getSession();
+				s3.putObject(session.awsbucket, session.awskey, session.getValue(),
+					function(err) {
+						console.log("put object complete", session.awsbucket, session.awskey, err);
+					}
+				);
+			}
+		});
+		// key('ctrl+s, cmd+s', function(e){
+		// 	var session = editor.getSession();
+		// 	s3.putObject(session.awsbucket, session.awskey, session.getValue(),
+		// 		function(err) {
+		// 			console.log("put object complete", session.awsbucket, session.awskey, err);
+		// 		}
+		// 	);
+		// });
+	</script>
+</body>
+</html>
